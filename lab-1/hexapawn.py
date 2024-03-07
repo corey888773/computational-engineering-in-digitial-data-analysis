@@ -1,6 +1,9 @@
 from easyAI import TwoPlayerGame
 import copy
 import random
+import config
+import time
+import pandas as pd
 
 # Convert D7 to (3,6) and back...
 to_string = lambda move: " ".join(
@@ -45,18 +48,26 @@ class Hexapawn(TwoPlayerGame):
 
     def make_move(self, move):
         move = list(map(to_tuple, move.split(" ")))
-        ind = self.player.pawns.index(move[0])
-        self.player.pawns[ind] = move[1]
+        pawn_index = self.player.pawns.index(move[0])
+        self.player.pawns[pawn_index] = move[1]
 
         if move[1] in self.opponent.pawns:
-            idx = self.opponent.pawns.index(move[1])
+            opponent_pawn_index = self.opponent.pawns.index(move[1])
+            starting_position = self.opponent.starting_positions.pop(opponent_pawn_index)
             self.opponent.pawns.remove(move[1])
-            self.player.captured_pawns.append(idx)
+            self.opponent.captured_pawns.append(starting_position)
 
-            if random.random() < 1 and self.player.captured_pawns != []:
-                pawn_idx = random.choice(self.player.captured_pawns)
-                self.opponent.pawns.append(self.opponent.starting_positions[pawn_idx])
-                self.player.captured_pawns.remove(pawn_idx)            
+        if move[1][0] == self.opponent.goal_line:
+            return
+ 
+        if config.DETERMINISTIC:
+            return
+
+        if random.random() < config.PROBABILITY and self.opponent.captured_pawns:
+            resurrected_pawn_index = random.choice(range(len(self.opponent.captured_pawns)))
+            resurrected_pawn = self.opponent.captured_pawns.pop(resurrected_pawn_index) 
+            self.opponent.pawns.append(resurrected_pawn)
+            self.opponent.starting_positions.append(resurrected_pawn)
 
     def lose(self):
         return any([i == self.opponent.goal_line for i, j in self.opponent.pawns]) or (
@@ -86,7 +97,31 @@ if __name__ == "__main__":
     from easyAI import AI_Player, Human_Player, Negamax
 
     scoring = lambda game: -100 if game.lose() else 0
-    ai = Negamax(10, scoring)
-    game = Hexapawn([AI_Player(ai), AI_Player(ai)])
-    game.play()
-    print("player %d wins after %d turns " % (game.opponent_index, game.nmove))
+    ai_depths = [10, 15]
+    variants = ['Deterministic', 'Probabilistic']
+    results = []
+
+    for i in range(5):
+        for depth in ai_depths:
+            for variant in variants:
+                print('\n\n ========= Starting game %d at depth %d (%s) ========= \n' % (i, depth, variant))
+                config.DETERMINISTIC = (variant == 'Deterministic')
+                ai = Negamax(depth, scoring)
+                game = Hexapawn([AI_Player(ai), AI_Player(ai)])
+
+                start_time = time.time()
+                game.play()
+                elapsed_time = time.time() - start_time
+
+                winner = game.opponent_index
+                results.append([i, depth, variant, winner, elapsed_time])
+
+    df = pd.DataFrame(results, columns=['Game', 'Depth', 'Variant', 'Winner', 'Time'])
+    print(df)
+
+    print('\n\nNumber of wins for each player at each depth and variant:')
+    print(df.groupby(['Depth', 'Variant', 'Winner']).size())
+
+    average_times = df.groupby('Variant')['Time'].mean()
+    print('\n\nAverage times spent by each AI variant:')
+    print(average_times)
