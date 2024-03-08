@@ -48,6 +48,7 @@ class Hexapawn(TwoPlayerGame):
 
     def make_move(self, move):
         move = list(map(to_tuple, move.split(" ")))
+        
         pawn_index = self.player.pawns.index(move[0])
         self.player.pawns[pawn_index] = move[1]
 
@@ -92,36 +93,54 @@ class Hexapawn(TwoPlayerGame):
             )
         )
 
+    def ttentry(self):
+        return tuple(
+            [
+                self.players[0].pawns,
+                self.players[1].pawns,
+                self.players[0].captured_pawns,
+                self.players[1].captured_pawns,
+            ]
+        )
+        
+    def ttrestore(self, entry):
+        self.players[0].pawns = entry[0]
+        self.players[1].pawns = entry[1]
+        self.players[0].captured_pawns = entry[2]
+        self.players[1].captured_pawns = entry[3]
+
 
 if __name__ == "__main__":
-    from easyAI import AI_Player, Human_Player, Negamax
+    from easyAI import AI_Player, Human_Player, Negamax, NonRecursiveNegamax
 
     scoring = lambda game: -100 if game.lose() else 0
-    ai_depths = [10, 15]
+    ai_depths = [2, 5, 15, 20]
     variants = ['Deterministic', 'Probabilistic']
+    algorithms = [Negamax, NonRecursiveNegamax]
     results = []
 
-    for i in range(5):
+    for i in range(config.NUMBER_OF_GAMES):
         for depth in ai_depths:
             for variant in variants:
-                print('\n\n ========= Starting game %d at depth %d (%s) ========= \n' % (i, depth, variant))
-                config.DETERMINISTIC = (variant == 'Deterministic')
-                ai = Negamax(depth, scoring)
-                game = Hexapawn([AI_Player(ai), AI_Player(ai)])
+                for algorithm in algorithms:
+                    print('\n\n ========= Starting game %d at depth %d (%s %s) ========= \n' % (i, depth, variant, algorithm.__name__))
+                    config.DETERMINISTIC = (variant == 'Deterministic')
+                    ai = algorithm(depth, scoring)
+                    game = Hexapawn([AI_Player(ai), AI_Player(ai)])
 
-                start_time = time.time()
-                game.play()
-                elapsed_time = time.time() - start_time
+                    start_time = time.time()
+                    game.play()
+                    elapsed_time = time.time() - start_time
 
-                winner = game.opponent_index
-                results.append([i, depth, variant, winner, elapsed_time])
+                    winner = game.opponent_index
+                    results.append([i, depth, variant, algorithm.__name__, winner, elapsed_time])
 
-    df = pd.DataFrame(results, columns=['Game', 'Depth', 'Variant', 'Winner', 'Time'])
+    df = pd.DataFrame(results, columns=['Game', 'Depth', 'Variant', 'Algorithm' ,'Winner', 'Time'])
     print(df)
 
     print('\n\nNumber of wins for each player at each depth and variant:')
-    print(df.groupby(['Depth', 'Variant', 'Winner']).size())
+    print(df.groupby(['Depth', 'Variant', 'Algorithm', 'Winner']).size())
 
-    average_times = df.groupby('Variant')['Time'].mean()
+    average_times = df.groupby('Variant', 'Algorithm')['Time'].mean()
     print('\n\nAverage times spent by each AI variant:')
     print(average_times)
