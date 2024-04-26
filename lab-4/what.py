@@ -50,3 +50,4 @@ if __name__ =='__main__':
             done = terminated or truncated
             print(score)
     env.close()
+
